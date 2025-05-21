@@ -17,7 +17,6 @@ async def create_agent():
                     command='npx',
                     args=["-y",
                         "@elastic/mcp-server-elasticsearch",
-                        "http://localhost:9200",
                     ],
                     env={
                         "ES_API_KEY": os.getenv("ES_API_KEY"),
