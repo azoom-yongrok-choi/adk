@@ -48,4 +48,23 @@ def get_default_parking_fields(data_type_path=None):
             for p in default_fields:
                 if p.endswith(kw) and p not in ordered:
                     ordered.append(p)
-    return ordered 
+    return ordered
+
+# Recursively extract all nested field paths from data_type.json properties
+def extract_nested_field_paths(properties, parent=""):
+    nested_paths = []
+    for k, v in properties.items():
+        path = f"{parent}.{k}" if parent else k
+        if v.get("type") == "nested":
+            nested_paths.append(path)
+        if "properties" in v:
+            nested_paths.extend(extract_nested_field_paths(v["properties"], path))
+    return nested_paths
+
+# Get all nested field paths from data_type.json
+def get_nested_fields(data_type_path=None):
+    if data_type_path is None:
+        data_type_path = os.path.join(os.path.dirname(__file__), "data_type.json")
+    with open(data_type_path, encoding="utf-8") as f:
+        data_type = json.load(f)
+    return extract_nested_field_paths(data_type["properties"]) 

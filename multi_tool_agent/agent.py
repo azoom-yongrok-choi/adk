@@ -5,13 +5,15 @@ import traceback
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 from google.adk.models.lite_llm import LiteLlm
-from .utils import get_default_parking_fields
+from .utils import get_default_parking_fields, get_nested_fields
 
 # Dynamically extract fields from data_type.json
 DEFAULT_PARKING_FIELDS = get_default_parking_fields()
+NESTED_FIELDS = get_nested_fields()
 
 AGENT_PROMPT_COMMON_RULES = """
 - Always respond in the user's language. Detect the user's language from their last message and answer in that language.
+- If the user's message contains any Korean characters, always answer in Korean, even if there are Japanese or other language words mixed in.
 - Use a friendly and approachable tone, as if you are chatting with a friend.
 - Use emojis in your answers to make the conversation more fun and friendly! 🚗🅿️✨
 """
@@ -93,7 +95,7 @@ async def create_agent():
     tools = []
     exit_stack = None
 
-    # Logging configuration 
+    # Logging configuration
     logging.basicConfig(level=logging.INFO)
 
     try:
@@ -124,6 +126,7 @@ async def create_agent():
         logging.error(traceback.format_exc())
 
     fields_str = ", ".join(DEFAULT_PARKING_FIELDS)
+    nested_fields_str = ", ".join(NESTED_FIELDS)
 
     agent = LlmAgent(
         model=LiteLlm(model="openai/gpt-4o-mini"),
@@ -144,32 +147,24 @@ async def create_agent():
 
             If the user's request is ambiguous, use these fields as the default set for your queryBody.
 
-            - For text fields, use match queries.
+            - For text fields, use match_phrase queries by default.
             - For keyword fields, use term queries.
             - For boolean fields, use term queries with true/false.
             - For long/float fields, use range or term queries.
             - For date fields, use range queries.
-            - For nested fields, use the nested query structure.
+            - For nested fields, always use the Elasticsearch nested query structure.
 
-            Examples:
-            {{
-                "queryBody": {{
-                    "query": {{
-                        "match": {{
-                            "address": "search term"
-                        }}
-                    }}
-                }}
-            }}
+            The following fields are of type 'nested' and MUST always be queried using the Elasticsearch nested query structure:
+            {nested_fields_str}
 
-            Nested field example:
+            Example of a nested query:
             {{
                 "queryBody": {{
                     "query": {{
                         "nested": {{
-                            "path": "spaces",
+                            "path": "nearbyStations",
                             "query": {{
-                                "term": {{ "spaces.isVisible": true }}
+                                "match_phrase": {{ "nearbyStations.name": "保谷" }}
                             }}
                         }}
                     }}
@@ -180,11 +175,12 @@ async def create_agent():
             - Always use only the \"parking\" index for all queries.
             - Use field names and types as defined above.
             - If you are unsure about a field, check the DEFAULT_PARKING_FIELDS list before constructing the query.
+            - For any field in the nested fields list above, always use the nested query structure as shown in the example.
 
             Have fun helping the user! 😄
             """,
         tools=tools,
-        before_tool_callback=ensure_required_params_callback,  # Register async callback directly
+        before_tool_callback=ensure_required_params_callback,
     )
     return agent, exit_stack
 
