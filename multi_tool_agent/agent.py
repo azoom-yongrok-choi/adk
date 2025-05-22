@@ -1,23 +1,20 @@
 import os
-import base64
 import asyncio
 import logging
 import traceback
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 from google.adk.models.lite_llm import LiteLlm
+from .utils import get_default_parking_fields
 
-# Fields required for search (Location, Fee, Security, Space)
-DEFAULT_PARKING_FIELDS = [
-    # Location
-    "address", "addressView", "location", "city", "prefecture", "region", "nearbyStations",
-    # Fee
-    "payment", "spaces.rent", "spaces.rentMin", "spaces.rentTaxClass", "referralFeeTotal", "storageDocument.issuingFee",
-    # Security
-    "securityFacilities", "spaces.facility",
-    # Space
-    "spaces", "capacity", "hasDivisionDrawing"
-]
+# Dynamically extract fields from data_type.json
+DEFAULT_PARKING_FIELDS = get_default_parking_fields()
+
+AGENT_PROMPT_COMMON_RULES = """
+- Always respond in the user's language. Detect the user's language from their last message and answer in that language.
+- Use a friendly and approachable tone, as if you are chatting with a friend.
+- Use emojis in your answers to make the conversation more fun and friendly! 🚗🅿️✨
+"""
 
 class UserFriendlyToolError(Exception):
     pass
@@ -52,16 +49,42 @@ async def ensure_required_params_callback(tool, args, tool_context):
         required_params = getattr(tool, 'required', []) or []
         missing_params = [p for p in required_params if p not in args or args[p] in (None, "")]
         if missing_params:
-            logging.warning(f"[TOOL GUARDRAIL] Missing required params: {missing_params}")
-            return {"status": "error", "error_message": f"필수 정보({', '.join(missing_params)})가 누락되었습니다."}
+            if "queryBody" in missing_params:
+                user_message_en = (
+                    "Your search is missing the required 'queryBody' parameter. "
+                    "Please provide more details about your search (e.g., location, price, facility, space, etc.) so I can help you better!"
+                )
+                user_text = getattr(tool_context, "user_input", None)
+                llm_agent = getattr(tool_context, "llm_agent", None)
+                if llm_agent and user_text:
+                    prompt = (
+                        f"{AGENT_PROMPT_COMMON_RULES}\n"
+                        f"Translate the following message into the user's language, matching the tone and style of the user's last message.\n"
+                        f"User's last message: {user_text}\n"
+                        f"Message: {user_message_en}"
+                    )
+                    try:
+                        response = await llm_agent.generate(prompt)
+                        user_message = response.text if hasattr(response, 'text') else str(response)
+                    except Exception as e:
+                        logging.error(f"[TOOL GUARDRAIL] LLM translation failed: {e}")
+                        user_message = user_message_en
+                else:
+                    user_message = user_message_en
+                return {
+                    "status": "error",
+                    "error_message": user_message
+                }
+            return {
+                "status": "error",
+                "error_message": f"Required information ({', '.join(missing_params)}) is missing. Please provide more details!"
+            }
         logging.info("[TOOL GUARDRAIL] All required params present. Tool execution allowed.")
         return None
     except Exception as e:
         logging.error(f"[TOOL GUARDRAIL] Exception in ensure_required_params_callback: {e}")
         logging.error(traceback.format_exc())
-        return {"status": "error", "error_message": f"파라미터 체크 중 예외 발생: {e}"}
-
-# ensure_required_params_callback 동기 래퍼 제거
+        return {"status": "error", "error_message": f"Exception occurred during parameter check: {e}"}
 
 async def create_agent():
     username = os.getenv("ES_USERNAME")
@@ -70,7 +93,7 @@ async def create_agent():
     tools = []
     exit_stack = None
 
-    # 로깅 설정 (INFO 레벨, 필요시 파일로도 가능)
+    # Logging configuration 
     logging.basicConfig(level=logging.INFO)
 
     try:
@@ -108,7 +131,13 @@ async def create_agent():
         instruction = f"""
             You are an agent that can use the Elasticsearch MCP server's search tool.
 
+            {AGENT_PROMPT_COMMON_RULES}
+
             **All data queries must use only the \"parking\" index. Never use any other index.**
+
+            **IMPORTANT: When calling the MCP search tool, you MUST always include the 'queryBody' parameter.**
+            If 'queryBody' is missing, the tool will not work and an error will occur.
+            Always construct and include a valid 'queryBody' object in your tool calls.
 
             When generating a queryBody, always include or prioritize the following fields by default, unless the user specifies otherwise:
             {fields_str}
@@ -124,10 +153,10 @@ async def create_agent():
 
             Examples:
             {{
-                \"queryBody\": {{
-                    \"query\": {{
-                        \"match\": {{
-                            \"address\": \"search term\"
+                "queryBody": {{
+                    "query": {{
+                        "match": {{
+                            "address": "search term"
                         }}
                     }}
                 }}
@@ -135,12 +164,12 @@ async def create_agent():
 
             Nested field example:
             {{
-                \"queryBody\": {{
-                    \"query\": {{
-                        \"nested\": {{
-                            \"path\": \"spaces\",
-                            \"query\": {{
-                                \"term\": {{ \"spaces.isVisible\": true }}
+                "queryBody": {{
+                    "query": {{
+                        "nested": {{
+                            "path": "spaces",
+                            "query": {{
+                                "term": {{ "spaces.isVisible": true }}
                             }}
                         }}
                     }}
@@ -151,18 +180,15 @@ async def create_agent():
             - Always use only the \"parking\" index for all queries.
             - Use field names and types as defined above.
             - If you are unsure about a field, check the DEFAULT_PARKING_FIELDS list before constructing the query.
-            - When you answer, always use a friendly and approachable tone, as if you are chatting with a friend 😊.
-            - Use emojis in your answers to make the conversation more fun and friendly! 🚗🅿️✨
-            - Detect the user's language and answer in that language. For example, if the user asks in Korean, answer in Korean; if the user asks in English, answer in English.
 
             Have fun helping the user! 😄
             """,
         tools=tools,
-        before_tool_callback=ensure_required_params_callback,  # async def 직접 등록
+        before_tool_callback=ensure_required_params_callback,  # Register async callback directly
     )
     return agent, exit_stack
 
-# 안전한 종료 함수 추가
+# Safe shutdown function
 async def safe_aclose_exit_stack(exit_stack):
     if exit_stack is not None:
         try:
