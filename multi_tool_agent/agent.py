@@ -89,7 +89,7 @@ async def create_agent():
                     }
                 )
             ),
-            timeout=20
+            timeout=100
         )
         logging.info(f"Received {len(tools)} tools from the MCP server.")
     except asyncio.TimeoutError:
