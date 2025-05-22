@@ -1,6 +1,8 @@
 import os
 import base64
 import asyncio
+import logging
+import traceback
 from google.adk.agents.llm_agent import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 from google.adk.models.lite_llm import LiteLlm
@@ -65,8 +67,12 @@ async def ensure_required_params_callback(callback_context, tool, args, tool_con
 async def create_agent():
     username = os.getenv("ES_USERNAME")
     password = os.getenv("ES_PASSWORD")
+    es_url = os.getenv("ES_URL")
     tools = []
     exit_stack = None
+
+    # 로깅 설정 (INFO 레벨, 필요시 파일로도 가능)
+    logging.basicConfig(level=logging.INFO)
 
     try:
         tools, exit_stack = await asyncio.wait_for(
@@ -77,8 +83,7 @@ async def create_agent():
                         "@elastic/mcp-server-elasticsearch",
                     ],
                     env={
-                        # "ES_API_KEY": os.getenv("ES_API_KEY"),
-                        "ES_URL": os.getenv("ES_URL"),
+                        "ES_URL": es_url,
                         "ES_USERNAME": username,
                         "ES_PASSWORD": password
                     }
@@ -86,11 +91,15 @@ async def create_agent():
             ),
             timeout=20
         )
-        print(f"Received {len(tools)} tools from the MCP server.")
+        logging.info(f"Received {len(tools)} tools from the MCP server.")
     except asyncio.TimeoutError:
-        print("[Warning] MCP server connection was not completed within 10 seconds. Creating the agent without MCP tools.")
+        logging.error("[Warning] MCP server connection was not completed within 10 seconds. Creating the agent without MCP tools.")
+        logging.error(f"[MCP Connection] ES_URL: {es_url}, ES_USERNAME: {username}")
     except Exception as e:
-        print(f"[Warning] Error occurred while connecting to the MCP server: {e}\nCreating the agent without MCP tools.")
+        logging.error("[Warning] Error occurred while connecting to the MCP server. Creating the agent without MCP tools.")
+        logging.error(f"[MCP Connection] ES_URL: {es_url}, ES_USERNAME: {username}")
+        logging.error(f"[MCP Connection] Exception: {e}")
+        logging.error(traceback.format_exc())
 
     fields_str = ", ".join(DEFAULT_PARKING_FIELDS)
 
