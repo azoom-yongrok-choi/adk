@@ -5,8 +5,22 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
 from google.genai import types
+import requests
+import os
+
+def test_es_connectivity():
+    url = os.getenv("ES_URL")
+    if not url:
+        print("[MCP Connectivity] ES_URL 환경변수가 설정되어 있지 않습니다.")
+        return
+    try:
+        resp = requests.get(url, timeout=10, verify=True)
+        print(f"[MCP Connectivity] Status: {resp.status_code}, Body: {resp.text[:200]}")
+    except Exception as e:
+        print(f"[MCP Connectivity] Connection failed: {e}")
 
 async def async_main():
+    test_es_connectivity()
     session_service = InMemorySessionService()
     artifacts_service = InMemoryArtifactService()
     session = session_service.create_session(
