@@ -1,6 +1,6 @@
 # multi_tool_agent/main_async.py
 import asyncio
-from multi_tool_agent.agent import create_agent, UserFriendlyToolError
+from multi_tool_agent.agent import create_agent, UserFriendlyToolError, safe_aclose_exit_stack
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
@@ -37,7 +37,7 @@ async def async_main():
         print(f"[System Error] {str(e)}")
 
     if exit_stack is not None:
-        await exit_stack.aclose()
+        await safe_aclose_exit_stack(exit_stack)
 
 if __name__ == '__main__':
     asyncio.run(async_main())

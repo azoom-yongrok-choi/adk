@@ -163,4 +163,16 @@ async def create_agent():
     )
     return agent, exit_stack
 
+# 안전한 종료 함수 추가
+async def safe_aclose_exit_stack(exit_stack):
+    if exit_stack is not None:
+        try:
+            await exit_stack.aclose()
+            logging.info("[Shutdown] exit_stack closed successfully.")
+        except Exception as e:
+            logging.error(f"[Shutdown] Error while closing exit_stack: {e}")
+            logging.error(traceback.format_exc())
+    else:
+        logging.info("[Shutdown] exit_stack is None, nothing to close.")
+
 root_agent = create_agent()
