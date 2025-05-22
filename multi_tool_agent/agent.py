@@ -46,29 +46,32 @@ async def get_param_error_message_ai(user_text, llm_agent, missing_params=None):
     response = await llm_agent.generate(prompt)
     return response.text if hasattr(response, 'text') else str(response)
 
-async def ensure_required_params_callback(callback_context, tool, args, tool_context):
-    # 모든 tool에 대해 필수 파라미터가 없거나 타입이 잘못된 경우 안내문 생성
-    # tool 객체에서 required 파라미터 목록 추출 (ADK MCPTool 등은 .parameters.get('required', []) 구조)
-    required_params = []
-    if hasattr(tool, 'parameters') and isinstance(tool.parameters, dict):
-        required_params = tool.parameters.get('required', [])
-    # 누락된 파라미터 찾기
-    missing_params = [p for p in required_params if p not in args or args[p] in (None, "")] if required_params else []
-    if missing_params:
-        user_text = getattr(callback_context, "user_input", "")
-        llm_agent = getattr(callback_context, "llm_agent", None) or getattr(tool_context, "llm_agent", None)
-        if llm_agent is not None:
-            error_msg = await get_param_error_message_ai(user_text, llm_agent, missing_params)
-        else:
-            error_msg = "Some required information is missing to process your request. Please let me know what you want to find! 😊"
-        raise UserFriendlyToolError(error_msg)
-    return None
+async def ensure_required_params_callback(tool, args, tool_context):
+    logging.info(f"[TOOL GUARDRAIL] Called ensure_required_params_callback with tool={tool}, args={args}, tool_context={tool_context}")
+    try:
+        required_params = getattr(tool, 'required', []) or []
+        missing_params = [p for p in required_params if p not in args or args[p] in (None, "")]
+        if missing_params:
+            logging.warning(f"[TOOL GUARDRAIL] Missing required params: {missing_params}")
+            return {"status": "error", "error_message": f"필수 정보({', '.join(missing_params)})가 누락되었습니다."}
+        logging.info("[TOOL GUARDRAIL] All required params present. Tool execution allowed.")
+        return None
+    except Exception as e:
+        logging.error(f"[TOOL GUARDRAIL] Exception in ensure_required_params_callback: {e}")
+        logging.error(traceback.format_exc())
+        return {"status": "error", "error_message": f"파라미터 체크 중 예외 발생: {e}"}
 
 # ensure_required_params_callback 동기 래퍼
-def ensure_required_params_callback_sync(*args, **kwargs):
-    import logging
-    logging.error(f"[DEBUG] before_tool_callback called with args={args}, kwargs={kwargs}")
-    return None
+def ensure_required_params_callback_sync(tool, args, tool_context):
+    logging.info(f"[TOOL GUARDRAIL] Called ensure_required_params_callback_sync with tool={tool}, args={args}, tool_context={tool_context}")
+    try:
+        result = asyncio.run(ensure_required_params_callback(tool, args, tool_context))
+        logging.info(f"[TOOL GUARDRAIL] ensure_required_params_callback result: {result}")
+        return result
+    except Exception as e:
+        logging.error(f"[TOOL GUARDRAIL] Exception in ensure_required_params_callback_sync: {e}")
+        logging.error(traceback.format_exc())
+        return {"status": "error", "error_message": f"콜백 실행 중 예외 발생: {e}"}
 
 async def create_agent():
     username = os.getenv("ES_USERNAME")
