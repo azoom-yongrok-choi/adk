@@ -17,6 +17,51 @@ DEFAULT_PARKING_FIELDS = [
     "spaces", "capacity", "hasDivisionDrawing"
 ]
 
+class UserFriendlyToolError(Exception):
+    pass
+
+async def get_param_error_message_ai(user_text, llm_agent, missing_params=None):
+    if missing_params:
+        param_str = ', '.join(missing_params)
+        prompt = (
+            f"The user tried to use a tool, but did not provide required information: {param_str}. "
+            "Please generate a short, friendly, and clear error message in the user's language, "
+            "explaining that the following information is missing: "
+            f"{param_str}. "
+            "Do NOT show any JSON, code example, or internal structure. "
+            "Just mention the missing item names in a simple, user-friendly way. "
+            "Do not mention internal parameter names or technical details. "
+            f"User's last message: {user_text}"
+        )
+    else:
+        prompt = (
+            "The user tried to use a tool, but did not provide all required information. "
+            "Please generate a short, friendly, and clear error message in the user's language, "
+            "explaining that some required information is missing for the request, but do NOT show any JSON or code example. "
+            "Do not mention internal parameter names. "
+            f"User's last message: {user_text}"
+        )
+    response = await llm_agent.generate(prompt)
+    return response.text if hasattr(response, 'text') else str(response)
+
+async def ensure_required_params_callback(callback_context, tool, args, tool_context):
+    # 모든 tool에 대해 필수 파라미터가 없거나 타입이 잘못된 경우 안내문 생성
+    # tool 객체에서 required 파라미터 목록 추출 (ADK MCPTool 등은 .parameters.get('required', []) 구조)
+    required_params = []
+    if hasattr(tool, 'parameters') and isinstance(tool.parameters, dict):
+        required_params = tool.parameters.get('required', [])
+    # 누락된 파라미터 찾기
+    missing_params = [p for p in required_params if p not in args or args[p] in (None, "")] if required_params else []
+    if missing_params:
+        user_text = getattr(callback_context, "user_input", "")
+        llm_agent = getattr(callback_context, "llm_agent", None) or getattr(tool_context, "llm_agent", None)
+        if llm_agent is not None:
+            error_msg = await get_param_error_message_ai(user_text, llm_agent, missing_params)
+        else:
+            error_msg = "Some required information is missing to process your request. Please let me know what you want to find! 😊"
+        raise UserFriendlyToolError(error_msg)
+    return None
+
 async def create_agent():
     username = os.getenv("ES_USERNAME")
     password = os.getenv("ES_PASSWORD")
@@ -32,7 +77,7 @@ async def create_agent():
                         "@elastic/mcp-server-elasticsearch",
                     ],
                     env={
-                        "ES_API_KEY": os.getenv("ES_API_KEY"),
+                        # "ES_API_KEY": os.getenv("ES_API_KEY"),
                         "ES_URL": os.getenv("ES_URL"),
                         "ES_USERNAME": username,
                         "ES_PASSWORD": password
@@ -105,6 +150,7 @@ async def create_agent():
             Have fun helping the user! 😄
             """,
         tools=tools,
+        before_tool_callback=ensure_required_params_callback,
     )
     return agent, exit_stack
 

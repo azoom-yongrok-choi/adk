@@ -1,6 +1,6 @@
 # multi_tool_agent/main_async.py
 import asyncio
-from multi_tool_agent.agent import create_agent
+from multi_tool_agent.agent import create_agent, UserFriendlyToolError
 from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.adk.artifacts.in_memory_artifact_service import InMemoryArtifactService
@@ -25,14 +25,19 @@ async def async_main():
     content = types.Content(role='user', parts=[types.Part(text=query)])
 
     print("Running agent...")
-    events_async = runner.run_async(
-        session_id=session.id, user_id=session.user_id, new_message=content
-    )
+    try:
+        events_async = runner.run_async(
+            session_id=session.id, user_id=session.user_id, new_message=content
+        )
+        async for event in events_async:
+            print(f"Event received: {event}")
+    except UserFriendlyToolError as e:
+        print(f"[User Message] {str(e)}")
+    except Exception as e:
+        print(f"[System Error] {str(e)}")
 
-    async for event in events_async:
-        print(f"Event received: {event}")
-
-    await exit_stack.aclose()
+    if exit_stack is not None:
+        await exit_stack.aclose()
 
 if __name__ == '__main__':
     asyncio.run(async_main())
