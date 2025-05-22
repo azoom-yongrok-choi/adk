@@ -64,6 +64,10 @@ async def ensure_required_params_callback(callback_context, tool, args, tool_con
         raise UserFriendlyToolError(error_msg)
     return None
 
+# ensure_required_params_callback 동기 래퍼
+def ensure_required_params_callback_sync(*args, **kwargs):
+    return asyncio.run(ensure_required_params_callback(*args, **kwargs))
+
 async def create_agent():
     username = os.getenv("ES_USERNAME")
     password = os.getenv("ES_PASSWORD")
@@ -159,7 +163,7 @@ async def create_agent():
             Have fun helping the user! 😄
             """,
         tools=tools,
-        before_tool_callback=ensure_required_params_callback,
+        before_tool_callback=ensure_required_params_callback_sync,
     )
     return agent, exit_stack
 
