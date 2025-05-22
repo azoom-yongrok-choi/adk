@@ -11,6 +11,7 @@ import logging
 
 def test_es_connectivity():
     logging.info("[MCP Connectivity] 네트워크 테스트 시작")
+    print("print:[MCP Connectivity] 네트워크 테스트 시작")
     url = os.getenv("ES_URL")
     if not url:
         logging.error("[MCP Connectivity] ES_URL 환경변수가 설정되어 있지 않습니다. 서버를 종료합니다.")

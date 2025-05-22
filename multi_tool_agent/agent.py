@@ -61,17 +61,7 @@ async def ensure_required_params_callback(tool, args, tool_context):
         logging.error(traceback.format_exc())
         return {"status": "error", "error_message": f"파라미터 체크 중 예외 발생: {e}"}
 
-# ensure_required_params_callback 동기 래퍼
-def ensure_required_params_callback_sync(tool, args, tool_context):
-    logging.info(f"[TOOL GUARDRAIL] Called ensure_required_params_callback_sync with tool={tool}, args={args}, tool_context={tool_context}")
-    try:
-        result = asyncio.run(ensure_required_params_callback(tool, args, tool_context))
-        logging.info(f"[TOOL GUARDRAIL] ensure_required_params_callback result: {result}")
-        return result
-    except Exception as e:
-        logging.error(f"[TOOL GUARDRAIL] Exception in ensure_required_params_callback_sync: {e}")
-        logging.error(traceback.format_exc())
-        return {"status": "error", "error_message": f"콜백 실행 중 예외 발생: {e}"}
+# ensure_required_params_callback 동기 래퍼 제거
 
 async def create_agent():
     username = os.getenv("ES_USERNAME")
@@ -168,7 +158,7 @@ async def create_agent():
             Have fun helping the user! 😄
             """,
         tools=tools,
-        before_tool_callback=ensure_required_params_callback_sync,
+        before_tool_callback=ensure_required_params_callback,  # async def 직접 등록
     )
     return agent, exit_stack
 
