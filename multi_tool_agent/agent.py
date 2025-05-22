@@ -66,7 +66,9 @@ async def ensure_required_params_callback(callback_context, tool, args, tool_con
 
 # ensure_required_params_callback 동기 래퍼
 def ensure_required_params_callback_sync(*args, **kwargs):
-    return asyncio.run(ensure_required_params_callback(*args, **kwargs))
+    import logging
+    logging.error(f"[DEBUG] before_tool_callback called with args={args}, kwargs={kwargs}")
+    return None
 
 async def create_agent():
     username = os.getenv("ES_USERNAME")
