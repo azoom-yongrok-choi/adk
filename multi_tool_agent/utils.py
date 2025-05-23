@@ -1,6 +1,7 @@
 import json
 import os
 
+
 # Recursively extract all field paths from data_type.json properties
 def extract_field_paths(properties, parent=""):
     paths = []
@@ -14,6 +15,7 @@ def extract_field_paths(properties, parent=""):
             paths.append(path)
     return paths
 
+
 # Extract only the paths corresponding to main fields (location, fee, security, space)
 def get_default_parking_fields(data_type_path=None):
     if data_type_path is None:
@@ -23,18 +25,37 @@ def get_default_parking_fields(data_type_path=None):
         data_type = json.load(f)
     all_paths = extract_field_paths(data_type["properties"])
     # Main field keywords
-    location_keywords = ["address", "addressView", "location", "city.name", "prefecture.name", "region.name", "nearbyStations.name"]
-    fee_keywords = ["payment.fee", "spaces.rent", "spaces.rentMin", "spaces.rentTaxClass", "referralFeeTotal", "storageDocument.issuingFee"]
+    location_keywords = [
+        "address",
+        "addressView",
+        "location",
+        "city.name",
+        "prefecture.name",
+        "region.name",
+        "nearbyStations.name",
+    ]
+    fee_keywords = [
+        "payment.fee",
+        "spaces.rent",
+        "spaces.rentMin",
+        "spaces.rentTaxClass",
+        "referralFeeTotal",
+        "storageDocument.issuingFee",
+    ]
     security_keywords = ["securityFacilities.status", "spaces.facility"]
     space_keywords = ["spaces", "capacity", "hasDivisionDrawing"]
+
     # Filter only paths that match the keywords
     def match_keywords(path, keywords):
         for kw in keywords:
             if path.endswith(kw):
                 return True
         return False
+
     default_fields = [
-        p for p in all_paths if (
+        p
+        for p in all_paths
+        if (
             match_keywords(p, location_keywords)
             or match_keywords(p, fee_keywords)
             or match_keywords(p, security_keywords)
@@ -50,6 +71,7 @@ def get_default_parking_fields(data_type_path=None):
                     ordered.append(p)
     return ordered
 
+
 # Recursively extract all nested field paths from data_type.json properties
 def extract_nested_field_paths(properties, parent=""):
     nested_paths = []
@@ -61,10 +83,11 @@ def extract_nested_field_paths(properties, parent=""):
             nested_paths.extend(extract_nested_field_paths(v["properties"], path))
     return nested_paths
 
+
 # Get all nested field paths from data_type.json
 def get_nested_fields(data_type_path=None):
     if data_type_path is None:
         data_type_path = os.path.join(os.path.dirname(__file__), "data_type.json")
     with open(data_type_path, encoding="utf-8") as f:
         data_type = json.load(f)
-    return extract_nested_field_paths(data_type["properties"]) 
+    return extract_nested_field_paths(data_type["properties"])
