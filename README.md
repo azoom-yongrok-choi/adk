@@ -1,5 +1,5 @@
 # Demo for AI Agent
-It's a simple demo for AI agent(PRJ-Synapse)
+It's a simple demo for AI agent(PJT-Synapse)
 
 ### Core stacks
 - ADK : for AI pipeline
@@ -25,6 +25,8 @@ pip install -r requirements.txt
 ### `.env`
 You must need to set environment variables file
 Plz ask to "Choi Yongrok" for sharing dashline
+
+_It must be located in `/multi_tool_agent`_
 
 ### Run code
 ```bash
