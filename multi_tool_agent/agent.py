@@ -6,6 +6,11 @@ from google.adk.agents.llm_agent import LlmAgent
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset, StdioServerParameters
 from google.adk.models.lite_llm import LiteLlm
 from .utils import get_default_parking_fields, get_nested_fields
+from toolbox_core import ToolboxSyncClient
+
+toolbox = ToolboxSyncClient("http://127.0.0.1:5000")
+dummy_tools = toolbox.load_toolset("dummy-toolset")
+
 
 # Dynamically extract fields from data_type.json
 DEFAULT_PARKING_FIELDS = get_default_parking_fields()
@@ -115,7 +120,7 @@ async def create_agent():
     logging.basicConfig(level=logging.INFO)
 
     try:
-        tools, exit_stack = await asyncio.wait_for(
+        mcp_tools, exit_stack = await asyncio.wait_for(
             MCPToolset.from_server(
                 connection_params=StdioServerParameters(
                     command="npx",
@@ -132,7 +137,7 @@ async def create_agent():
             ),
             timeout=100,
         )
-        logging.info(f"Received {len(tools)} tools from the MCP server.")
+
     except asyncio.TimeoutError:
         logging.error(
             "[Warning] MCP server connection was not completed within 10 seconds. Creating the agent without MCP tools."
@@ -149,37 +154,50 @@ async def create_agent():
     fields_str = ", ".join(DEFAULT_PARKING_FIELDS)
     nested_fields_str = ", ".join(NESTED_FIELDS)
 
+    tools = list(dummy_tools) + list(mcp_tools)
+    logging.info(f"Received {len(tools)} tools from the MCP server.")
+    logging.info(
+        f"[TOOL LOAD] 최종 tools 목록: {[getattr(t, 'name', str(t)) for t in tools]}"
+    )
+
     agent = LlmAgent(
         model=LiteLlm(model="openai/gpt-4o-mini"),
         name="mcp_agent",
         instruction=f"""
-You are an agent that uses the Elasticsearch MCP server's search tool.
+You are an agent that uses the tools.
+Here's how you handle different types of searches:
 
-- Always respond in the user's language and use a friendly, emoji-rich tone.
-- All data queries must use only the \"parking\" index. Never use any other index.
-- Every MCP search tool call must include a valid 'queryBody' parameter.
-- When building 'queryBody':
-  - Use these fields by default unless the user specifies otherwise: {fields_str}
-  - For text fields, use match_phrase queries.
-  - For keyword fields, use term queries.
-  - For boolean fields, use term queries with true/false.
-  - For long/float fields, use range or term queries.
-  - For date fields, use range queries.
-  - For nested fields ({nested_fields_str}), always use the Elasticsearch nested query structure.
+- For Parking Searches:
+    - Use the Elasticsearch MCP server's search tool.
+    - Always respond in the user's language and use a friendly, emoji-rich tone.
+    - All data queries must use only the \"parking\" index. Never use any other index.
+    - Every MCP search tool call must include a valid 'queryBody' parameter.
+    - When building 'queryBody':
+    - Use these fields by default unless the user specifies otherwise: {fields_str}
+    - For text fields, use match_phrase queries.
+    - For keyword fields, use term queries.
+    - For boolean fields, use term queries with true/false.
+    - For long/float fields, use range or term queries.
+    - For date fields, use range queries.
+    - For nested fields ({nested_fields_str}), always use the Elasticsearch nested query structure.
 
-Example nested query:
-{{
-  "queryBody": {{
-    "query": {{
-      "nested": {{
-        "path": "nearbyStations",
+    Example nested query:
+    {{
+    "queryBody": {{
         "query": {{
-          "match_phrase": {{ "nearbyStations.name": "保谷" }}
+        "nested": {{
+            "path": "nearbyStations",
+            "query": {{
+            "match_phrase": {{ "nearbyStations.name": "保谷" }}
+            }}
         }}
-      }}
+        }}
     }}
-  }}
-}}
+    }}
+
+- For Hotel Searches:
+    - Use the hotel search tools provided (search-all-hotels-dummy, search-hotels-by-name, search-hotels-by-location).
+    - If the user asks about hotels, do NOT use the parking index or MCP tools. Use the hotel search tools instead.    
 """,
         tools=tools,
         before_tool_callback=ensure_required_params_callback,
