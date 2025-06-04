@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  mcp:
+    build: ./MCP
+    ports:
+      - "5001:5001"
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-key.json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    volumes:
+      - ./MCP/gcp-key.json:/app/gcp-key.json
+      - ./MCP/tools.yaml:/app/tools.yaml
+
+  adk:
+    build: ./adkweb
+    ports:
+      - "3000:8000"
+    environment:
+      - TOOLBOX_URL=http://mcp:5001
+    depends_on:
+      mcp:
+        condition: service_healthy
+

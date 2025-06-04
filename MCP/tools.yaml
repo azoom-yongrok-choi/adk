@@ -1,0 +1,34 @@
+sources:
+  my-bigquery-source:
+    kind: bigquery
+    project: azoom-yongrok-choi
+    location: asia-northeast1
+tools:
+  search-all-hotels-dummy:
+    kind: bigquery-sql
+    source: my-bigquery-source
+    description: Search for all hotels.
+    statement: SELECT * FROM `dummy.hotels`;
+  search-hotels-by-name:
+    kind: bigquery-sql
+    source: my-bigquery-source
+    description: Search for hotels based on name.
+    parameters:
+      - name: name
+        type: string
+        description: The name of the hotel.
+    statement: SELECT * FROM `dummy.hotels` WHERE LOWER(name) LIKE LOWER(CONCAT('%', @name, '%'));
+  search-hotels-by-location:
+    kind: bigquery-sql
+    source: my-bigquery-source
+    description: Search for hotels based on location.
+    parameters:
+      - name: location
+        type: string
+        description: The location of the hotel.
+    statement: SELECT * FROM `dummy.hotels` WHERE LOWER(location) LIKE LOWER(CONCAT('%', @location, '%'));
+toolsets:
+  dummy-toolset:
+    - search-all-hotels-dummy
+    - search-hotels-by-name
+    - search-hotels-by-location

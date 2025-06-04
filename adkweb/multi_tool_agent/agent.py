@@ -8,7 +8,8 @@ from google.adk.models.lite_llm import LiteLlm
 from .utils import get_default_parking_fields, get_nested_fields
 from toolbox_core import ToolboxSyncClient
 
-toolbox = ToolboxSyncClient("http://127.0.0.1:5000")
+toolbox_url = os.environ.get("TOOLBOX_URL", "http://mcp:5001")
+toolbox = ToolboxSyncClient(toolbox_url)
 dummy_tools = toolbox.load_toolset("dummy-toolset")
 
 
@@ -53,6 +54,25 @@ async def get_param_error_message_ai(user_text, llm_agent, missing_params=None):
     return response.text if hasattr(response, "text") else str(response)
 
 
+def fix_match_phrase(query):
+    """
+    Recursively fix match_phrase queries where the value is a string instead of an object.
+    If 'match_phrase': 'addressView' is found, it will be converted to 'match_phrase': {'addressView': '<PLACEHOLDER>'}.
+    You may want to improve this logic to extract the actual value from context if possible.
+    """
+    if isinstance(query, dict):
+        for k, v in list(query.items()):
+            if k == "match_phrase" and isinstance(v, str):
+                # Replace with a placeholder or try to infer value
+                query[k] = {v: "<VALUE_MISSING>"}
+            elif isinstance(v, dict):
+                fix_match_phrase(v)
+            elif isinstance(v, list):
+                for item in v:
+                    fix_match_phrase(item)
+    return query
+
+
 async def ensure_required_params_callback(tool, args, tool_context):
     logging.info(
         f"[TOOL GUARDRAIL] Called ensure_required_params_callback with tool={tool}, args={args}, tool_context={tool_context}"
@@ -62,6 +82,8 @@ async def ensure_required_params_callback(tool, args, tool_context):
         missing_params = [
             p for p in required_params if p not in args or args[p] in (None, "")
         ]
+        if "queryBody" in args and isinstance(args["queryBody"], dict):
+            fix_match_phrase(args["queryBody"])
         if missing_params:
             if "queryBody" in missing_params:
                 user_message_en = (
@@ -156,9 +178,6 @@ async def create_agent():
 
     tools = list(dummy_tools) + list(mcp_tools)
     logging.info(f"Received {len(tools)} tools from the MCP server.")
-    logging.info(
-        f"[TOOL LOAD] 최종 tools 목록: {[getattr(t, 'name', str(t)) for t in tools]}"
-    )
 
     agent = LlmAgent(
         model=LiteLlm(model="openai/gpt-4o-mini"),
@@ -170,16 +189,22 @@ Here's how you handle different types of searches:
 - For Parking Searches:
     - Use the Elasticsearch MCP server's search tool.
     - Always respond in the user's language and use a friendly, emoji-rich tone.
-    - All data queries must use only the \"parking\" index. Never use any other index.
+    - All data queries must use only the "parking" index. Never use any other index.
     - Every MCP search tool call must include a valid 'queryBody' parameter.
+    - If you do not have enough information from the user's message to build a valid 'queryBody', DO NOT guess. Instead, ask the user for the missing information in a friendly way, specifying what you need (e.g., location, price, facility, etc.).
     - When building 'queryBody':
-    - Use these fields by default unless the user specifies otherwise: {fields_str}
-    - For text fields, use match_phrase queries.
-    - For keyword fields, use term queries.
-    - For boolean fields, use term queries with true/false.
-    - For long/float fields, use range or term queries.
-    - For date fields, use range queries.
-    - For nested fields ({nested_fields_str}), always use the Elasticsearch nested query structure.
+      - Use these fields by default unless the user specifies otherwise: {fields_str}
+      - For text fields, always use this structure:
+        {{ "match_phrase": {{ "addressView": "新宿駅" }} }}
+      - Do NOT use this structure:
+        {{ "match_phrase": "addressView" }}
+      - For multiple conditions, use:
+        {{ "bool": {{ "must": [{{ "match_phrase": {{ "addressView": "新宿駅" }} }}, {{ "match_phrase": {{ "city.name": "東京" }} }}] }} }}
+      - For keyword fields, use term queries.
+      - For boolean fields, use term queries with true/false.
+      - For long/float fields, use range or term queries.
+      - For date fields, use range queries.
+      - For nested fields ({nested_fields_str}), always use the Elasticsearch nested query structure.
 
     Example nested query:
     {{
@@ -197,7 +222,10 @@ Here's how you handle different types of searches:
 
 - For Hotel Searches:
     - Use the hotel search tools provided (search-all-hotels-dummy, search-hotels-by-name, search-hotels-by-location).
-    - If the user asks about hotels, do NOT use the parking index or MCP tools. Use the hotel search tools instead.    
+    - If the user asks about hotels, do NOT use the parking index or MCP tools. Use the hotel search tools instead.
+
+- For all other questions:
+    - Answer using your own knowledge as an AI assistant.
 """,
         tools=tools,
         before_tool_callback=ensure_required_params_callback,

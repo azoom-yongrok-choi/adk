@@ -13,4 +13,4 @@ COPY . /app
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-CMD ["python", "multi_tool_agent/main_async.py"] 
+CMD echo "For local testing, access at http://localhost:3000" && adk web
